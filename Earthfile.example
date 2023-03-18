@@ -1,0 +1,35 @@
+VERSION 0.6
+
+ARG GO_VERSION=1.20
+ARG GOLINT_VERSION=1.47.3
+
+go-deps:
+    ARG GO_VERSION
+    FROM golang:$GO_VERSION
+    WORKDIR /build
+    COPY go.mod go.sum ./
+    RUN go mod download
+    RUN apt-get update
+    SAVE ARTIFACT go.mod AS LOCAL go.mod
+    SAVE ARTIFACT go.sum AS LOCAL go.sum
+
+build:
+    FROM +go-deps
+    COPY . .
+    COPY +libwhisper/whisper.cpp /whisper.cpp
+    RUN C_INCLUDE_PATH=/whisper.cpp LIBRARY_PATH=/whisper.cpp go build ./
+    SAVE ARTIFACT out AS LOCAL out
+
+libwhisper:
+    FROM +go-deps
+    WORKDIR /build
+    RUN git clone https://github.com/ggerganov/whisper.cpp.git
+    RUN cd whisper.cpp && make libwhisper.a
+    SAVE ARTIFACT whisper.cpp AS LOCAL whisper
+
+image:
+    FROM +go-deps
+    RUN apt-get install -y ffmpeg bash wget
+    COPY +libwhisper/whisper.cpp /whisper
+    ARG MODEL=small
+    RUN /whisper/models/download-ggml-model.sh $MODEL
